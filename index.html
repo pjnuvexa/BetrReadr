@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>RSVP Reader</title>
+<style>
+  body {
+    background: #111;
+    color: #fff;
+    font-family: -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+  }
+  #wordBox {
+    display: flex;
+    width: 500px;
+    font-size: 64px;
+    font-weight: bold;
+    height: 100px;
+    align-items: center;
+    justify-content: center;
+  }
+  .left {
+    flex: 1;
+    text-align: right;
+    white-space: pre;
+  }
+  .anchor {
+    color: #e02020;
+    white-space: pre;
+  }
+  .right {
+    flex: 1;
+    text-align: left;
+    white-space: pre;
+  }
+  #controls {
+    position: absolute;
+    bottom: 30px;
+    text-align: center;
+    width: 100%;
+  }
+  input[type=file], button {
+    margin: 8px;
+    padding: 8px 16px;
+    font-size: 14px;
+  }
+  #speedLabel { font-size: 14px; margin-bottom: 6px; }
+  input[type=range] { width: 300px; }
+</style>
+</head>
+<body>
+
+<div id="wordBox">
+  <span class="left" id="left"></span><span class="anchor" id="anchor"></span><span class="right" id="right"></span>
+</div>
+
+<div id="controls">
+  <input type="file" id="pdfInput" accept="application/pdf">
+  <br>
+  <textarea id="textInput" placeholder="Or paste text here" rows="2" cols="50"></textarea>
+  <br>
+  <button id="playBtn">Play</button>
+  <button id="pauseBtn">Pause</button>
+  <button id="resetBtn">Reset</button>
+  <br>
+  <div id="speedLabel">Speed: 200 wpm</div>
+  <input type="range" id="speedSlider" min="200" max="450" step="50" value="200">
+</div>
+
+<script src="pdf.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = "pdf.worker.min.js";
+
+let words = [];
+let index = 0;
+let timer = null;
+let wpm = 200;
+
+const leftEl = document.getElementById("left");
+const anchorEl = document.getElementById("anchor");
+const rightEl = document.getElementById("right");
+const speedSlider = document.getElementById("speedSlider");
+const speedLabel = document.getElementById("speedLabel");
+
+speedSlider.addEventListener("input", () => {
+  wpm = parseInt(speedSlider.value);
+  speedLabel.textContent = `Speed: ${wpm} wpm`;
+  if (timer) { pause(); play(); }
+});
+
+document.getElementById("textInput").addEventListener("input", (e) => {
+  words = e.target.value.split(/\s+/).filter(Boolean);
+  index = 0;
+});
+
+document.getElementById("pdfInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  const buffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+  let fullText = "";
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    fullText += content.items.map(item => item.str).join(" ") + " ";
+  }
+  words = fullText.split(/\s+/).filter(Boolean);
+  index = 0;
+  leftEl.textContent = "";
+  anchorEl.textContent = "";
+  rightEl.textContent = `Loaded ${words.length} words`;
+});
+
+function getAnchorIndex(word) {
+  const len = word.length;
+  if (len <= 1) return 0;
+  if (len <= 5) return 1;
+  if (len <= 9) return 2;
+  if (len <= 13) return 3;
+  return 4;
+}
+
+function showNextWord() {
+  if (index >= words.length) {
+    pause();
+    leftEl.textContent = "";
+    anchorEl.textContent = "";
+    rightEl.textContent = "Done";
+    return;
+  }
+  const word = words[index];
+  const anchorPos = getAnchorIndex(word);
+  leftEl.textContent = word.slice(0, anchorPos);
+  anchorEl.textContent = word.slice(anchorPos, anchorPos + 1);
+  rightEl.textContent = word.slice(anchorPos + 1);
+  index++;
+}
+
+function play() {
+  if (words.length === 0) return;
+  const interval = 60000 / wpm;
+  timer = setInterval(showNextWord, interval);
+}
+
+function pause() {
+  clearInterval(timer);
+  timer = null;
+}
+
+document.getElementById("playBtn").addEventListener("click", play);
+document.getElementById("pauseBtn").addEventListener("click", pause);
+document.getElementById("resetBtn").addEventListener("click", () => {
+  pause();
+  index = 0;
+  leftEl.textContent = "";
+  anchorEl.textContent = "";
+  rightEl.textContent = "Reset";
+});
+</script>
+
+</body>
+</html>
